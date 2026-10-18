@@ -64,6 +64,36 @@ void showHeader(String heading) {
   print('${TerminalStyle.muted} ${'─' * heading.length} ${TerminalStyle.reset}');
 }
 
+String _fitCell(String value, int width) {
+  if (value.length <= width) return value.padRight(width);
+  if (width < 2) return value.substring(0, width);
+  return '${value.substring(0, width - 1)}…';
+}
+
+void printTable(List<String> headers, List<List<String>> rows) {
+  final widths = List<int>.generate(headers.length, (column) {
+    final largestValue = rows
+        .map((row) => row[column].length)
+        .fold(0, (largest, length) => length > largest ? length : largest);
+    return [headers[column].length, largestValue, 3].reduce((a, b) => a > b ? a : b);
+  });
+
+  String border(String left, String join, String right) =>
+      '$left${widths.map((width) => '─' * (width + 2)).join(join)}$right';
+  String line(List<String> cells) =>
+      '│ ${List<int>.generate(headers.length, (i) => i)
+          .map((column) => _fitCell(cells[column], widths[column]))
+          .join(' │ ')} │';
+
+  print('${TerminalStyle.muted}${border('┌', '┬', '┐')}${TerminalStyle.reset}');
+  print('${TerminalStyle.title}${line(headers)}${TerminalStyle.reset}');
+  print('${TerminalStyle.muted}${border('├', '┼', '┤')}${TerminalStyle.reset}');
+  for (final row in rows) {
+    print(line(row));
+  }
+  print('${TerminalStyle.muted}${border('└', '┴', '┘')}${TerminalStyle.reset}');
+}
+
 bool isValidDate(String value) {
   if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return false;
   final parsed = DateTime.tryParse(value);
@@ -125,11 +155,12 @@ void markAttendance() {
     return;
   }
 
-  print('Available sessions:');
-  for (final session in sessions) {
-    print('  ${TerminalStyle.accent}[${session.id}]${TerminalStyle.reset} '
-        '${session.course} · ${session.date}');
-  }
+  printTable(
+    const ['ID', 'COURSE', 'DATE'],
+    sessions
+        .map((session) => [session.id.toString(), session.course, session.date])
+        .toList(),
+  );
 
   final sessionId = int.tryParse(ask('Session ID: '));
   if (!sessions.any((session) => session.id == sessionId)) {
@@ -142,6 +173,7 @@ void markAttendance() {
     return;
   }
 
+  final markedAttendance = <List<String>>[];
   for (final student in students) {
     String? status;
     while (status == null) {
@@ -153,8 +185,10 @@ void markAttendance() {
       }
     }
     records.add(AttendanceRecord(sessionId!, student.id, status));
+    markedAttendance.add([student.id.toString(), student.name, status]);
   }
 
+  printTable(const ['ID', 'STUDENT', 'STATUS'], markedAttendance);
   showMessage('Attendance recorded successfully.', TerminalStyle.success);
 }
 
@@ -175,16 +209,10 @@ void viewStudentAttendance() {
 
   final student = matches.first;
   final percent = attendancePercent(student.id);
-  print('\n${TerminalStyle.title}${student.name}${TerminalStyle.reset}');
-  print('Attendance: ${TerminalStyle.accent}${percent.toStringAsFixed(1)}%'
-      '${TerminalStyle.reset}');
-  if (percent < minimumPercent) {
-    showMessage('Below the ${minimumPercent.toStringAsFixed(0)}% requirement.',
-        TerminalStyle.warning);
-  } else {
-    showMessage('Meeting the ${minimumPercent.toStringAsFixed(0)}% requirement.',
-        TerminalStyle.success);
-  }
+  final requirement = percent < minimumPercent ? 'Below threshold' : 'On track';
+  printTable(const ['ID', 'STUDENT', 'ATTENDANCE', 'REQUIREMENT'], [
+    [student.id.toString(), student.name, '${percent.toStringAsFixed(1)}%', requirement],
+  ]);
 }
 
 void listLowAttendance() {
@@ -203,29 +231,30 @@ void listLowAttendance() {
     return;
   }
 
-  print('Name                         Attendance');
-  print('${TerminalStyle.muted}${'─' * 40}${TerminalStyle.reset}');
-  for (final student in lowAttendanceStudents) {
-    final name = student.name.length > 26
-        ? '${student.name.substring(0, 23)}…'
-        : student.name;
-    final percent = attendancePercent(student.id).toStringAsFixed(1);
-    print('${name.padRight(28)} ${TerminalStyle.warning}$percent%'
-        '${TerminalStyle.reset}');
-  }
+  printTable(
+    const ['ID', 'STUDENT', 'ATTENDANCE', 'REQUIREMENT'],
+    lowAttendanceStudents
+        .map((student) => [
+              student.id.toString(),
+              student.name,
+              '${attendancePercent(student.id).toStringAsFixed(1)}%',
+              'Below threshold',
+            ])
+        .toList(),
+  );
 }
 
 void showMenu() {
-  print('\n${TerminalStyle.title} AttendEase ${TerminalStyle.reset}'
-      '${TerminalStyle.muted}│ Student Attendance Tracker${TerminalStyle.reset}');
-  print('${TerminalStyle.muted}${'─' * 42}${TerminalStyle.reset}');
-  print('  ${TerminalStyle.accent}1${TerminalStyle.reset}  Add student');
-  print('  ${TerminalStyle.accent}2${TerminalStyle.reset}  Create class session');
-  print('  ${TerminalStyle.accent}3${TerminalStyle.reset}  Record attendance');
-  print('  ${TerminalStyle.accent}4${TerminalStyle.reset}  View student attendance');
-  print('  ${TerminalStyle.accent}5${TerminalStyle.reset}  List students below '
-      '${minimumPercent.toStringAsFixed(0)}%');
-  print('  ${TerminalStyle.muted}0  Exit${TerminalStyle.reset}');
+  print('\n${TerminalStyle.title} AttendEase | Student Attendance Tracker'
+      '${TerminalStyle.reset}');
+  printTable(const ['OPTION', 'ACTION'], [
+    ['1', 'Add student'],
+    ['2', 'Create class session'],
+    ['3', 'Record attendance'],
+    ['4', 'View student attendance'],
+    ['5', 'List students below ${minimumPercent.toStringAsFixed(0)}%'],
+    ['0', 'Exit'],
+  ]);
 }
 
 // ---------- Application entry point ----------
